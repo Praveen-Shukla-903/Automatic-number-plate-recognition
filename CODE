@@ -1,0 +1,66 @@
+# Import the required libraries
+import cv2
+import pytesseract
+from google.colab.patches import cv2_imshow
+
+# Mount Google Drive (optional, if you want to read the image from Google Drive)
+from google.colab import drive
+drive.mount('/content/drive')
+
+# Path to the Tesseract executable (change it according to your installation)
+pytesseract.pytesseract.tesseract_cmd = '/usr/bin/env TESSDATA_PREFIX=/usr/share/tesseract-ocr/5.0/tessdata/ tesseract'
+
+# Path to the input image file
+image_path = '/content/bom-car-number-plate-background.png'  # Update with your image path
+
+# Load the image using OpenCV
+image = cv2.imread(image_path)
+
+# Convert the image to grayscale
+gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+# Apply Gaussian blur to reduce noise
+blur = cv2.GaussianBlur(gray, (5, 5), 0)
+
+# Apply Canny edge detection
+edges = cv2.Canny(blur, 100, 200)
+
+# Find contours in the image
+contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+# Sort contours by area in descending order
+contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
+
+# Initialize the license plate contour and x, y coordinates
+plate_contour = None
+x, y, w, h = 0, 0, 0, 0
+
+# Iterate over contours and find the license plate contour
+for contour in contours:
+    perimeter = cv2.arcLength(contour, True)
+    approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
+
+    if len(approx) == 4:
+        x, y, w, h = cv2.boundingRect(approx)
+        plate_contour = approx
+        break
+
+# Extract the license plate region from the image
+plate = gray[y:y + h, x:x + w]
+
+# Preprocess the plate image for better OCR results
+_, threshold = cv2.threshold(plate, 150, 255, cv2.THRESH_BINARY_INV)
+kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+dilated = cv2.dilate(threshold, kernel, iterations=1)
+
+# Perform OCR using pytesseract
+plate_text = pytesseract.image_to_string(dilated, config='--psm 11')
+
+# Print the extracted license plate text
+print('License Plate:', plate_text)
+
+# Draw the license plate contour on the original image
+cv2.drawContours(image, [plate_contour], -1, (0, 255, 0), 2)
+
+# Display the original image with license plate contour
+cv2_imshow(image)
